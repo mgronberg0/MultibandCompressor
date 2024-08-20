@@ -15,7 +15,7 @@ using namespace daisysp;
 void Butterworth::Reset()
 {
     omega_c   =  cutoff_ * two_pi_d_sr_;
-    K = tanf(omega_c/2);
+    K = tan(omega_c/2);
     K2 = K*K;
 
     if (filter_type_ == FilterType::ALLPASS){
@@ -45,8 +45,8 @@ void Butterworth::Reset()
 
 void Butterworth::Init(float sample_rate)
 {
-    sample_rate_ = sample_rate;
-    two_pi_d_sr_ = TWOPI_F / sample_rate_;
+    sample_rate_ = double(sample_rate);
+    two_pi_d_sr_ = double(TWOPI_F) / sample_rate_;
     a0_ = 1.0f;
     a1_ = 0.0f;
     a2_ = 0.0f;

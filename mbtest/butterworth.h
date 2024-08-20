@@ -61,9 +61,9 @@ class Butterworth
     }
   //private
   public:
-    float sample_rate_, cutoff_, b0_, b1_, b2_, a0_, a1_, a2_,
+    double sample_rate_, cutoff_, b0_, b1_, b2_, a0_, a1_, a2_,
         two_pi_d_sr_, xnm1_, xnm2_, ynm1_, ynm2_;
-    float omega_c, K, K2;
+    double omega_c, K, K2;
     FilterType filter_type_;
     void Reset();
 };

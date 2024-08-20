@@ -16,7 +16,7 @@ using namespace daisysp;
 
 // Hardware vars
 DaisyPod  hw;
-Parameter p_knob1, p_knob2, fcParam;
+Parameter p_knob1, p_knob2, fc1Param, fc2Param;
 float oldk1, oldk2, k1, k2;
 int b2_toogle_state;
 int b2_num_states;
@@ -24,9 +24,11 @@ int b2_num_states;
 float sample_rate;
 
 // Component Vars
-Butterworth lpf_1,lpf_2;
+Butterworth lpf_1a,lpf_1b;
+Butterworth hpf_2a,hpf_2b, lpf_2a,lpf_2b;
+Butterworth hpf_3a,hpf_3b;
 FilterType filterType;
-float fc;
+float fc1,fc2;
 
 //Helper functions
 uint8_t sumbuff[1024];
@@ -55,18 +57,32 @@ void AudioCallback(AudioHandle::InputBuffer in,
 {
 	for (size_t i = 0; i < size; i++)
 	{
-        if (b2_toogle_state == 0){
-            out[0][i] = lpf_1.Process(in[0][i]);
+        float y1, y2;
+        if (b2_toogle_state == 0){  // Low band only
+            y1 = lpf_1a.Process(in[0][i]);
+            y2 = lpf_1b.Process(y1);
 
+            out[0][i] = y2;
             out[1][i] = out[0][i];		
         }
-        if (b2_toogle_state == 1){  // 4th order
-            float y1 = lpf_1.Process(in[0][i]);
-            float y2 = lpf_2.Process(y1);
+        if (b2_toogle_state == 1){  // middle band only
+            y1 = hpf_2a.Process(in[0][i]);
+            y2 = hpf_2b.Process(y1);
+            // Reuse y2
+            y1 = lpf_2a.Process(y2);
+            y2 = lpf_2b.Process(y1);
+
 
             out[0][i] = y2;
             out[1][i] = out[0][i];
-        }        
+        }
+        if (b2_toogle_state == 2){  // High band only
+            y1 = hpf_3a.Process(in[0][i]);
+            y2 = hpf_3b.Process(y1);
+
+            out[0][i] = y2;
+            out[1][i] = out[0][i];
+        }             
 	}
 }
 
@@ -78,7 +94,7 @@ int main(void)
     oldk1 = oldk2 = 0;
     k1 = k2 = 0;
     b2_toogle_state = 0;
-    b2_num_states = 2;
+    b2_num_states = 3;
     // USB stuff
     hw.usb_handle.Init(UsbHandle::FS_INTERNAL);
 
@@ -90,25 +106,51 @@ int main(void)
     
     p_knob1.Init(hw.knob1, 0, 1, Parameter::LINEAR);
     p_knob2.Init(hw.knob2, 0, 1, Parameter::LINEAR);
-    fcParam.Init(hw.knob1,10,18000,Parameter::LOGARITHMIC);
+    fc1Param.Init(hw.knob1,10,18000,Parameter::LOGARITHMIC);
+    fc1Param.Init(hw.knob2,10,18000,Parameter::LOGARITHMIC);
 
-    // set up butterworth filter
-	lpf_1.Init(sample_rate);
-    lpf_2.Init(sample_rate);
+    // set up butterworth filter DO NOT FORGET THIS lol
+	lpf_1a.Init(sample_rate);
+    lpf_1b.Init(sample_rate);
+    hpf_2a.Init(sample_rate);
+    hpf_2b.Init(sample_rate);
+    lpf_2a.Init(sample_rate);
+    lpf_2b.Init(sample_rate);
+    hpf_3a.Init(sample_rate);
+    hpf_3b.Init(sample_rate);
     //bqtest.Init(sample_rate);
-	fc = 200.0f;
+	fc1 = 200.0;
+    fc2 = 2000.0;
 	filterType =FilterType::LOWPASS;
-	lpf_1.SetCutoff(fc);
-	lpf_1.SetFilterType(filterType);
-    lpf_2.SetCutoff(fc);
-	lpf_2.SetFilterType(filterType);
+    {  // Low Band Filter Defs
+        lpf_1a.SetCutoff(fc1);
+        lpf_1a.SetFilterType(FilterType::LOWPASS);
+        lpf_1b.SetCutoff(fc1);
+        lpf_1b.SetFilterType(FilterType::LOWPASS);
+    }	
+    {  // Middle band Filter Defs
+        hpf_2a.SetCutoff(fc1);
+        hpf_2a.SetFilterType(FilterType::HIGHPASS);
+        hpf_2b.SetCutoff(fc1);
+        hpf_2b.SetFilterType(FilterType::HIGHPASS);
+        lpf_2a.SetCutoff(fc2);
+        lpf_2a.SetFilterType(FilterType::LOWPASS);
+        lpf_2b.SetCutoff(fc2);
+        lpf_2b.SetFilterType(FilterType::LOWPASS);
+    }
+    {  // High band Filter Defs
+        hpf_3a.SetCutoff(fc2);
+        hpf_3a.SetFilterType(FilterType::HIGHPASS);
+        hpf_3b.SetCutoff(fc2);
+        hpf_3b.SetFilterType(FilterType::HIGHPASS);
+    }
 
     hw.StartAdc();
     hw.StartAudio(AudioCallback);
 
     while(1)
     {
-        System::Delay(10);
+        System::Delay(50);
         Controls();
 
     }
@@ -119,7 +161,7 @@ void PrintCoeffs(Butterworth filter){
     char buffer[2048];
     daisysp::FilterCoeffs coeffs = filter.GetCoefficients();
         test::sprintf_(buffer,"a0: %f  a1: %f  a2: %f  b0: %f  b1: %f  b2: %f\r\n"
-                        "fc: %f omega_c: %f  K: %f  K2: %f\r\n"
+                        "fc: %f omega_c: %f  K: %f  K2: %f FS: %f\r\n"
                         "b2_state: %i\r\n\r\n",
             coeffs.a0,
             coeffs.a1,
@@ -127,10 +169,11 @@ void PrintCoeffs(Butterworth filter){
             coeffs.b0,
             coeffs.b1,
             coeffs.b2,
-            fc,
+            filter.cutoff_,
             filter.omega_c,
             filter.K,
             filter.K2,
+            filter.sample_rate_,
             b2_toogle_state);
             hw.usb_handle.TransmitInternal((uint8_t*)buffer, strlen(buffer));
 
@@ -164,27 +207,50 @@ void UpdateKnobs()
     
     k1 = p_knob1.Process();
     k2 = p_knob2.Process();
-    //fc = fcParam.Process();
-    if (ConditionalParameter(oldk1, k1, fc, fcParam.Process())){
-        lpf_1.SetCutoff(fc);
-        lpf_2.SetCutoff(fc);
+    //fc1 = fc1Param.Process();
+    if (ConditionalParameter(oldk1, k1, fc1, fc1Param.Process())){
+        lpf_1a.SetCutoff(fc1);
+        lpf_1b.SetCutoff(fc1);
+        hpf_2a.SetCutoff(fc1);
+        hpf_2b.SetCutoff(fc1);
+    };
+    if (ConditionalParameter(oldk2, k2, fc2, fc2Param.Process())){
+        lpf_2a.SetCutoff(fc2);
+        lpf_2b.SetCutoff(fc2);
+        hpf_3a.SetCutoff(fc2);
+        hpf_3b.SetCutoff(fc2);
     };
     
     oldk1 = k1;    
+    oldk2 = k2;    
 }
 
 void UpdateButtons()
 {
     if(hw.button1.RisingEdge())
     {
-        PrintCoeffs(lpf_1);
+        PrintCoeffs(lpf_1a);
     }
 
     if(hw.button2.RisingEdge())
     {
         b2_toogle_state += 1;
         b2_toogle_state = b2_toogle_state % b2_num_states;
-        PrintCoeffs(lpf_1);
+        
+        switch (b2_toogle_state)
+        {
+            case 0:
+                PrintCoeffs(lpf_1a);
+                break;
+            case 1:
+                PrintCoeffs(lpf_2a);
+                System::Delay(70);
+                PrintCoeffs(hpf_2a);
+                break;
+            case 2:
+                PrintCoeffs(hpf_3a);
+                break;
+        }
     }
 }
 void UpdateLeds()
@@ -193,13 +259,13 @@ void UpdateLeds()
     switch (b2_toogle_state)
     {
         case 0:
-            hw.led2.Set(0, 0, 1);
+            hw.led2.Set(1, 0, 0);
             break;
         case 1:
-            hw.led2.Set(0, 1, 0);
+            hw.led2.Set(1, 1, 0);
             break;
         case 2:
-            hw.led2.Set(1, 0, 0);
+            hw.led2.Set(0, 1, 0);
             break;
         case 3:
             hw.led2.Set(.7, .7, .7);
