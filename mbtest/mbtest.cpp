@@ -4,6 +4,7 @@
 #include "daisy_pod.h"
 #include "daisysp.h"
 #include "butterworth.h"
+#include "dev\oled_ssd130x.h"
 
 namespace test {
 #include "printf.h"
@@ -20,6 +21,12 @@ Parameter p_knob1, p_knob2, fc1Param, fc2Param;
 float oldk1, oldk2, k1, k2;
 int b2_toogle_state;
 int b2_num_states;
+
+SSD130xI2CTransport::Config oledTransConfig;
+OledDisplay<SSD130xI2c128x64Driver>::Config display_cfg;
+OledDisplay<SSD130xI2c128x64Driver> display;
+
+
 // Audio vars
 float sample_rate;
 
@@ -97,6 +104,23 @@ int main(void)
     b2_num_states = 3;
     // USB stuff
     hw.usb_handle.Init(UsbHandle::FS_INTERNAL);
+    // I2C stuff
+    display_cfg.driver_config.transport_config.i2c_address = 0x3D;
+    display_cfg.driver_config.transport_config.i2c_config.address = 0x3D;
+    display_cfg.driver_config.transport_config.i2c_config.speed = I2CHandle::Config::Speed::I2C_100KHZ;
+    display_cfg.driver_config.transport_config.i2c_config.pin_config.scl = seed::D11;
+    display_cfg.driver_config.transport_config.i2c_config.pin_config.sda = seed::D12;
+    // oledTransConfig.Defaults();
+    // oledTransConfig.i2c_address = 0x3D;
+    // oledTransConfig.i2c_config.pin_config.scl = {DSY_GPIOB, 11};
+    // oledTransConfig.i2c_config.pin_config.sda = {DSY_GPIOB, 12};
+    // oledTransConfig.i2c_config.speed = I2CHandle::Config::Speed::I2C_100KHZ;
+    // display_cfg.transport_config = oledTransConfig;
+    display.Init(display_cfg);
+
+    display.Fill(true);
+    display.Update();
+
 
     /* char buff[2048];
 
@@ -178,6 +202,12 @@ void PrintCoeffs(Butterworth filter){
             hw.usb_handle.TransmitInternal((uint8_t*)buffer, strlen(buffer));
 
 }
+
+// void PrintI2CInfo(){
+//     char buffer[2048];
+//     test::sprintf_(buffer,"SCL pin: %f  SDA pin: %f add: %X"
+//     hw.usb_handle.TransmitInternal((uint8_t*)buffer, strlen(buffer));
+// }
 
 //Updates values if knob had changed
 bool ConditionalParameter(float  oldVal,
