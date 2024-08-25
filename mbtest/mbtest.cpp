@@ -4,6 +4,7 @@
 #include "daisy_pod.h"
 #include "daisysp.h"
 #include "butterworth.h"
+#include "sbcompressor.h"
 #include "dev\oled_ssd130x.h"
 
 namespace test {
@@ -25,6 +26,8 @@ int b2_num_states;
 SSD130xI2CTransport::Config oledTransConfig;
 OledDisplay<SSD130xI2c128x64Driver>::Config display_cfg;
 OledDisplay<SSD130xI2c128x64Driver> display;
+#define DISPLAY_HEIGTH 64
+#define DISPLAY_WIDTH 128
 
 
 // Audio vars
@@ -36,6 +39,8 @@ Butterworth hpf_2a,hpf_2b, lpf_2a,lpf_2b;
 Butterworth hpf_3a,hpf_3b;
 FilterType filterType;
 float fc1,fc2;
+
+SBCompressor comp1;
 
 //Helper functions
 uint8_t sumbuff[1024];
@@ -54,6 +59,7 @@ bool ConditionalParameter(float  oldVal,
                           float  newVal,
                           float &param,
                           float  update);
+
 void UpdateKnobs();
 void UpdateButtons();
 void UpdateLeds();
@@ -64,6 +70,7 @@ void AudioCallback(AudioHandle::InputBuffer in,
 {
 	for (size_t i = 0; i < size; i++)
 	{
+        comp1.MeasureLevelRMS(in[0][i]);
         float y1, y2;
         if (b2_toogle_state == 0){  // Low band only
             y1 = lpf_1a.Process(in[0][i]);
@@ -107,7 +114,7 @@ int main(void)
     // I2C stuff
     display_cfg.driver_config.transport_config.i2c_address = 0x3D;
     display_cfg.driver_config.transport_config.i2c_config.address = 0x3D;
-    display_cfg.driver_config.transport_config.i2c_config.speed = I2CHandle::Config::Speed::I2C_100KHZ;
+    display_cfg.driver_config.transport_config.i2c_config.speed = I2CHandle::Config::Speed::I2C_1MHZ;
     display_cfg.driver_config.transport_config.i2c_config.pin_config.scl = seed::D11;
     display_cfg.driver_config.transport_config.i2c_config.pin_config.sda = seed::D12;
     // oledTransConfig.Defaults();
@@ -169,16 +176,69 @@ int main(void)
         hpf_3b.SetFilterType(FilterType::HIGHPASS);
     }
 
+    comp1.Init(sample_rate);
+    comp1.SetReleaseSec(.5);
+
     hw.StartAdc();
     hw.StartAudio(AudioCallback);
-
+    bool draw = true;
+    /** Clear the display */
+    display.Fill(false);
+    float levelHistoryArr[DISPLAY_WIDTH] = {0};
+    int currentIndex = 0;
+    FixedCapStr<32> str("");
+    
     while(1)
     {
         System::Delay(50);
-        Controls();
+        //levelHistoryArr[currentIndex] = Random::GetFloat(0,3*(DISPLAY_HEIGTH/4));
+        levelHistoryArr[currentIndex] = comp1.xRMS_;
+        display.Fill(false); // Clear the display
+        for(int i = 0; i<DISPLAY_WIDTH; i++){
+            display.DrawLine(i,DISPLAY_HEIGTH,
+                i,DISPLAY_HEIGTH-(int)(levelHistoryArr[(currentIndex+i)% DISPLAY_WIDTH]*DISPLAY_HEIGTH), true);
+        }
+        currentIndex = (currentIndex+1) % DISPLAY_WIDTH;
 
+        display.SetCursor(4, 4);
+        str = "";
+        str.AppendFloat(float(comp1.xRMS_),5);
+        display.WriteString(str, Font_6x8, true);
+        display.Update(); // Update the display to show the changes
+        Controls();
+        
     }
+    
+
 }
+/*
+for (int j = 0; j<128; j++){
+        System::Delay(10);
+
+
+        float seconds = System::GetNow() / 1000.0;
+
+        
+        display.SetCursor(4, 16);
+
+        display.WriteString("Time since startup:", Font_6x8, true);
+
+        display.SetCursor(4, 32);
+
+        FixedCapStr<16> str("");
+        str.AppendFloat(seconds);
+
+        display.WriteString(str, Font_11x18, true);
+        //display.DrawLine(0,0,j,63,draw);
+
+
+        display.Update();
+        // System::Delay(50);
+        // Controls();
+        }
+        draw = !draw;
+*/
+
 
 // slash r slash n does a clean newline
 void PrintCoeffs(Butterworth filter){
@@ -201,6 +261,26 @@ void PrintCoeffs(Butterworth filter){
             b2_toogle_state);
             hw.usb_handle.TransmitInternal((uint8_t*)buffer, strlen(buffer));
 
+}
+
+void PrintCompState(SBCompressor compressor){
+    char buffer[2048];
+    test::sprintf_(buffer,"TS: %f  thresh: %f  ratio: %f  atk: %f  rls: %f  slope: %f\r\n"
+                        "tlog2: %f xRMS_: %f  xPeak_: %f  xPeak_m1_: %f xRMS_m1_: %f\r\n\n",
+            compressor.sample_period_,
+            compressor.thresh_dB_, 
+            compressor.ratio_, 
+            compressor.attack_sec_, 
+            compressor.release_sec_,
+            compressor.at_,
+            compressor.rt_,
+            compressor.slope_,
+            compressor.thres_log2_,
+            compressor.xRMS_, 
+            compressor.xPeak_, 
+            compressor.xPeak_m1_,
+            compressor.xRMS_m1_);
+            hw.usb_handle.TransmitInternal((uint8_t*)buffer, strlen(buffer));
 }
 
 // void PrintI2CInfo(){
@@ -259,7 +339,7 @@ void UpdateButtons()
 {
     if(hw.button1.RisingEdge())
     {
-        PrintCoeffs(lpf_1a);
+        PrintCompState(comp1);
     }
 
     if(hw.button2.RisingEdge())

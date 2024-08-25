@@ -1,6 +1,7 @@
 {
     "files.associations": {
-        "random": "cpp"
+        "random": "cpp",
+        "chrono": "cpp"
     },
     "workbench.colorTheme": "Gruvbox Dark Hard"
 }

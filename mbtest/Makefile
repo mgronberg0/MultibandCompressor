@@ -6,7 +6,7 @@ SRC_DIR = src
 CPP_SOURCES = mbtest.cpp 
 CPP_SOURCES += \
 $(SRC_DIR)/butterworth.cpp \
-$(SRC_DIR)/compressor.cpp
+$(SRC_DIR)/sbcompressor.cpp
 
 C_INCLUDES += -I…/…/DaisySP/DaisySP-LGPL/Source
 USE_DAISYSP_LGPL = 1
