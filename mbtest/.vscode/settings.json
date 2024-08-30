@@ -1,7 +1,9 @@
 {
     "files.associations": {
         "random": "cpp",
-        "chrono": "cpp"
+        "chrono": "cpp",
+        "*.tcc": "cpp",
+        "memory_resource": "cpp"
     },
     "workbench.colorTheme": "Gruvbox Dark Hard"
 }

@@ -1,0 +1,29 @@
+[33mcommit ec40543fec7eca99d23fa66f6158ce70f4ee7d43[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: mgronberg0 <mgronberg0@gmail.com>
+Date:   Sat Aug 24 22:40:01 2024 -0700
+
+    Implemented Weird Peak Follower, Display for tracking it
+
+[33mcommit a4b6c6a2b254dc8db8375dc5b43ab4caa22567d8[m
+Author: mgronberg0 <mgronberg0@gmail.com>
+Date:   Wed Aug 21 21:32:27 2024 -0700
+
+    i2c display working!
+
+[33mcommit 6a8e25ac7afa55175d88651ba71e05013d27a397[m
+Author: mgronberg0 <mgronberg0@gmail.com>
+Date:   Mon Aug 19 22:09:59 2024 -0700
+
+    togglable bands
+
+[33mcommit 73b6c5a7e218280599b26e0ba41319d01202e490[m
+Author: mgronberg0 <mgronberg0@gmail.com>
+Date:   Thu Aug 15 23:45:38 2024 -0700
+
+    added git ignore
+
+[33mcommit 9a71d65f3eb8ca1a935a2f455aed2c878dcb3126[m
+Author: mgronberg0 <mgronberg0@gmail.com>
+Date:   Thu Aug 15 23:43:15 2024 -0700
+
+    initial commit

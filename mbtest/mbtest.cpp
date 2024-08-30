@@ -19,6 +19,9 @@ using namespace daisysp;
 // Hardware vars
 DaisyPod  hw;
 Parameter p_knob1, p_knob2, fc1Param, fc2Param;
+Parameter inGain_param, outGain_param;
+Parameter attack_param, release_param;
+Parameter ratio_param, thresh_param;
 float oldk1, oldk2, k1, k2;
 int b2_toogle_state;
 int b2_num_states;
@@ -39,6 +42,9 @@ Butterworth hpf_2a,hpf_2b, lpf_2a,lpf_2b;
 Butterworth hpf_3a,hpf_3b;
 FilterType filterType;
 float fc1,fc2;
+float inGain, outGain;
+float atk, rls;
+float ratio, thresh;
 
 SBCompressor comp1;
 
@@ -70,33 +76,8 @@ void AudioCallback(AudioHandle::InputBuffer in,
 {
 	for (size_t i = 0; i < size; i++)
 	{
-        comp1.MeasureLevelRMS(in[0][i]);
-        float y1, y2;
-        if (b2_toogle_state == 0){  // Low band only
-            y1 = lpf_1a.Process(in[0][i]);
-            y2 = lpf_1b.Process(y1);
-
-            out[0][i] = y2;
-            out[1][i] = out[0][i];		
-        }
-        if (b2_toogle_state == 1){  // middle band only
-            y1 = hpf_2a.Process(in[0][i]);
-            y2 = hpf_2b.Process(y1);
-            // Reuse y2
-            y1 = lpf_2a.Process(y2);
-            y2 = lpf_2b.Process(y1);
-
-
-            out[0][i] = y2;
-            out[1][i] = out[0][i];
-        }
-        if (b2_toogle_state == 2){  // High band only
-            y1 = hpf_3a.Process(in[0][i]);
-            y2 = hpf_3b.Process(y1);
-
-            out[0][i] = y2;
-            out[1][i] = out[0][i];
-        }             
+        out[0][i] = comp1.ProcessFull(in[0][i]);
+        out[1][i] = comp1.ApplyAllGain(in[1][i]);        
 	}
 }
 
@@ -108,7 +89,7 @@ int main(void)
     oldk1 = oldk2 = 0;
     k1 = k2 = 0;
     b2_toogle_state = 0;
-    b2_num_states = 3;
+    b2_num_states = 3;  //0 is in out gain, 1 is atk rls, 2 is fc, 3 is ratio thresh 
     // USB stuff
     hw.usb_handle.Init(UsbHandle::FS_INTERNAL);
     // I2C stuff
@@ -117,12 +98,7 @@ int main(void)
     display_cfg.driver_config.transport_config.i2c_config.speed = I2CHandle::Config::Speed::I2C_1MHZ;
     display_cfg.driver_config.transport_config.i2c_config.pin_config.scl = seed::D11;
     display_cfg.driver_config.transport_config.i2c_config.pin_config.sda = seed::D12;
-    // oledTransConfig.Defaults();
-    // oledTransConfig.i2c_address = 0x3D;
-    // oledTransConfig.i2c_config.pin_config.scl = {DSY_GPIOB, 11};
-    // oledTransConfig.i2c_config.pin_config.sda = {DSY_GPIOB, 12};
-    // oledTransConfig.i2c_config.speed = I2CHandle::Config::Speed::I2C_100KHZ;
-    // display_cfg.transport_config = oledTransConfig;
+
     display.Init(display_cfg);
 
     display.Fill(true);
@@ -140,7 +116,16 @@ int main(void)
     fc1Param.Init(hw.knob1,10,18000,Parameter::LOGARITHMIC);
     fc1Param.Init(hw.knob2,10,18000,Parameter::LOGARITHMIC);
 
+    inGain_param.Init(hw.knob1,-40.0,40.0,Parameter::LINEAR);
+    outGain_param.Init(hw.knob2,-40.0,40.0,Parameter::LINEAR);
+    attack_param.Init(hw.knob1,0.001,.3,Parameter::LINEAR);
+    release_param.Init(hw.knob2,0.001,1.0,Parameter::LINEAR);
+    ratio_param.Init(hw.knob2,1.0,12.0,Parameter::LINEAR);
+    thresh_param.Init(hw.knob2,-60.0,0.0,Parameter::LINEAR);
+
+
     // set up butterworth filter DO NOT FORGET THIS lol
+    {
 	lpf_1a.Init(sample_rate);
     lpf_1b.Init(sample_rate);
     hpf_2a.Init(sample_rate);
@@ -149,9 +134,13 @@ int main(void)
     lpf_2b.Init(sample_rate);
     hpf_3a.Init(sample_rate);
     hpf_3b.Init(sample_rate);
+    }
     //bqtest.Init(sample_rate);
 	fc1 = 200.0;
     fc2 = 2000.0;
+    inGain, outGain = 0.0f;
+    atk, rls = 0.0f;
+    ratio, thresh = 0.0f;
 	filterType =FilterType::LOWPASS;
     {  // Low Band Filter Defs
         lpf_1a.SetCutoff(fc1);
@@ -177,67 +166,107 @@ int main(void)
     }
 
     comp1.Init(sample_rate);
-    comp1.SetReleaseSec(.5);
+    comp1.SetLevelFollowerType(LevelFollowerType::PEAK);
+    comp1.SetAttackSec(.1);
+    comp1.SetReleaseSec(.3);
+    
 
     hw.StartAdc();
     hw.StartAudio(AudioCallback);
-    bool draw = true;
+
     /** Clear the display */
     display.Fill(false);
-    float levelHistoryArr[DISPLAY_WIDTH] = {0};
-    int currentIndex = 0;
+    display.Update();
+
     FixedCapStr<32> str("");
     
+    str = "";
+    display.Fill(false);
+    display.Update(); // Update the display to show the changes
+    System::Delay(500);
     while(1)
     {
-        System::Delay(50);
-        //levelHistoryArr[currentIndex] = Random::GetFloat(0,3*(DISPLAY_HEIGTH/4));
-        levelHistoryArr[currentIndex] = comp1.xRMS_;
-        display.Fill(false); // Clear the display
-        for(int i = 0; i<DISPLAY_WIDTH; i++){
-            display.DrawLine(i,DISPLAY_HEIGTH,
-                i,DISPLAY_HEIGTH-(int)(levelHistoryArr[(currentIndex+i)% DISPLAY_WIDTH]*DISPLAY_HEIGTH), true);
-        }
-        currentIndex = (currentIndex+1) % DISPLAY_WIDTH;
-
+        System::Delay(10);
+        display.Fill(false);
         display.SetCursor(4, 4);
-        str = "";
-        str.AppendFloat(float(comp1.xRMS_),5);
+        str = "RMS : ";
+        str.AppendFloat(SBCompressor::linear2dB(comp1.xRMS_),5);
         display.WriteString(str, Font_6x8, true);
-        display.Update(); // Update the display to show the changes
+        display.SetCursor(4, 4+(10*1));
+        str = "Peak: ";
+        str.AppendFloat(SBCompressor::linear2dB(comp1.xPeak_),5);
+        display.WriteString(str, Font_6x8, true);
+        //0 is in out gain, 1 is atk rls, 2 is ratio thresh 3 is fc,
+        switch(b2_toogle_state){
+        case 0:
+            display.SetCursor(4, 4+(10*2));
+            str = "inGain : ";
+            str.AppendFloat(inGain,2);
+            display.WriteString(str, Font_6x8, true);
+            display.SetCursor(4, 4+(10*3));
+            str = "outGain: ";
+            str.AppendFloat(outGain,2);
+            display.WriteString(str, Font_6x8, true);
+            display.Update();
+            break;
+        case 1:
+            display.SetCursor(4, 4+(10*2));
+            str = "atk: ";
+            str.AppendFloat(atk,2);
+            display.WriteString(str, Font_6x8, true);
+            display.SetCursor(4, 4+(10*3));
+            str = "rls: ";
+            str.AppendFloat(rls,2);
+            display.WriteString(str, Font_6x8, true);
+            display.Update();
+            break;
+        case 2:
+            display.SetCursor(4, 4+(10*2));
+            str = "ratio : ";
+            str.AppendFloat(ratio,2);
+            display.WriteString(str, Font_6x8, true);
+            display.SetCursor(4, 4+(10*3));
+            str = "thresh: ";
+            str.AppendFloat(thresh,2);
+            display.WriteString(str, Font_6x8, true);
+            display.Update();
+            break;
+        case 3:
+            display.SetCursor(4, 4+(10*2));
+            str = "fc1 : ";
+            str.AppendFloat(fc1,2);
+            display.WriteString(str, Font_6x8, true);
+            display.SetCursor(4, 4+(10*3));
+            str = "fc2: ";
+            str.AppendFloat(fc2,2);
+            display.WriteString(str, Font_6x8, true);
+            display.Update();
+            break;
+        }
+        
+        //levelHistoryArr[currentIndex] = Random::GetFloat(0,3*(DISPLAY_HEIGTH/4));
+        //levelHistoryArr[currentIndex] = comp1.xRMS_;
+        //display.Fill(false); // Clear the display
+        // for(int i = 0; i<DISPLAY_WIDTH; i++){
+        //     System::Delay(5);
+        //     display.DrawLine(i,0,i,DISPLAY_HEIGTH,draw);
+        //     display.Update(); 
+        // }
+        // draw = !draw;
+        // currentIndex = (currentIndex+1) % DISPLAY_WIDTH;
+        
+
+        // display.SetCursor(4, 4);
+        // str = "";
+        // str.AppendFloat(float(comp1.xRMS_),5);
+        // display.WriteString(str, Font_6x8, true);
+         // Update the display to show the changes
         Controls();
         
     }
     
 
 }
-/*
-for (int j = 0; j<128; j++){
-        System::Delay(10);
-
-
-        float seconds = System::GetNow() / 1000.0;
-
-        
-        display.SetCursor(4, 16);
-
-        display.WriteString("Time since startup:", Font_6x8, true);
-
-        display.SetCursor(4, 32);
-
-        FixedCapStr<16> str("");
-        str.AppendFloat(seconds);
-
-        display.WriteString(str, Font_11x18, true);
-        //display.DrawLine(0,0,j,63,draw);
-
-
-        display.Update();
-        // System::Delay(50);
-        // Controls();
-        }
-        draw = !draw;
-*/
 
 
 // slash r slash n does a clean newline
@@ -266,7 +295,7 @@ void PrintCoeffs(Butterworth filter){
 void PrintCompState(SBCompressor compressor){
     char buffer[2048];
     test::sprintf_(buffer,"TS: %f  thresh: %f  ratio: %f  atk: %f  rls: %f  slope: %f\r\n"
-                        "tlog2: %f xRMS_: %f  xPeak_: %f  xPeak_m1_: %f xRMS_m1_: %f\r\n\n",
+                        "tLin: %f xRMS_: %f  xPeak_: %f  xPeak_m1_: %f RMS_SF: %f xSqr: %f\r\n\n",
             compressor.sample_period_,
             compressor.thresh_dB_, 
             compressor.ratio_, 
@@ -275,19 +304,13 @@ void PrintCompState(SBCompressor compressor){
             compressor.at_,
             compressor.rt_,
             compressor.slope_,
-            compressor.thres_log2_,
+            compressor.thresh_lin_,
             compressor.xRMS_, 
             compressor.xPeak_, 
-            compressor.xPeak_m1_,
-            compressor.xRMS_m1_);
+            compressor.rms_smoothing_factor_,
+            compressor.xSqr_m1_);
             hw.usb_handle.TransmitInternal((uint8_t*)buffer, strlen(buffer));
 }
-
-// void PrintI2CInfo(){
-//     char buffer[2048];
-//     test::sprintf_(buffer,"SCL pin: %f  SDA pin: %f add: %X"
-//     hw.usb_handle.TransmitInternal((uint8_t*)buffer, strlen(buffer));
-// }
 
 //Updates values if knob had changed
 bool ConditionalParameter(float  oldVal,
@@ -318,18 +341,63 @@ void UpdateKnobs()
     k1 = p_knob1.Process();
     k2 = p_knob2.Process();
     //fc1 = fc1Param.Process();
-    if (ConditionalParameter(oldk1, k1, fc1, fc1Param.Process())){
-        lpf_1a.SetCutoff(fc1);
-        lpf_1b.SetCutoff(fc1);
-        hpf_2a.SetCutoff(fc1);
-        hpf_2b.SetCutoff(fc1);
-    };
-    if (ConditionalParameter(oldk2, k2, fc2, fc2Param.Process())){
-        lpf_2a.SetCutoff(fc2);
-        lpf_2b.SetCutoff(fc2);
-        hpf_3a.SetCutoff(fc2);
-        hpf_3b.SetCutoff(fc2);
-    };
+    switch (b2_toogle_state)
+    {
+        //0 is in out gain, 1 is atk rls, 2 is ratio thresh 3 is fc,
+        case 0:
+            
+            if (ConditionalParameter(oldk1, k1, inGain, inGain_param.Process())){
+                comp1.SetInputGainLin(inGain);
+            }
+            if (ConditionalParameter(oldk2, k2, outGain, outGain_param.Process())){
+                comp1.SetInputGainLin(outGain);
+            }
+            break;
+        case 1:
+            
+            if (ConditionalParameter(oldk1, k1, atk, attack_param.Process())){
+                comp1.SetInputGainLin(atk);
+            }
+            if (ConditionalParameter(oldk2, k2, rls, release_param.Process())){
+                comp1.SetInputGainLin(rls);
+            }
+            break;
+        case 2:
+            
+            if (ConditionalParameter(oldk1, k1, ratio, ratio_param.Process())){
+                comp1.SetRatio(ratio);
+            }
+            if (ConditionalParameter(oldk2, k2, thresh, thresh_param.Process())){
+                comp1.SetThresholdDB(thresh);
+            }
+            break;
+        case 3:
+            if (ConditionalParameter(oldk1, k1, fc1, fc1Param.Process())){
+                lpf_1a.SetCutoff(fc1);
+                lpf_1b.SetCutoff(fc1);
+                hpf_2a.SetCutoff(fc1);
+                hpf_2b.SetCutoff(fc1);
+            };
+            if (ConditionalParameter(oldk2, k2, fc2, fc2Param.Process())){
+                lpf_2a.SetCutoff(fc2);
+                lpf_2b.SetCutoff(fc2);
+                hpf_3a.SetCutoff(fc2);
+                hpf_3b.SetCutoff(fc2);
+            };
+            break;
+    }
+    // if (ConditionalParameter(oldk1, k1, fc1, fc1Param.Process())){
+    //     lpf_1a.SetCutoff(fc1);
+    //     lpf_1b.SetCutoff(fc1);
+    //     hpf_2a.SetCutoff(fc1);
+    //     hpf_2b.SetCutoff(fc1);
+    // };
+    // if (ConditionalParameter(oldk2, k2, fc2, fc2Param.Process())){
+    //     lpf_2a.SetCutoff(fc2);
+    //     lpf_2b.SetCutoff(fc2);
+    //     hpf_3a.SetCutoff(fc2);
+    //     hpf_3b.SetCutoff(fc2);
+    // };
     
     oldk1 = k1;    
     oldk2 = k2;    
@@ -347,20 +415,20 @@ void UpdateButtons()
         b2_toogle_state += 1;
         b2_toogle_state = b2_toogle_state % b2_num_states;
         
-        switch (b2_toogle_state)
-        {
-            case 0:
-                PrintCoeffs(lpf_1a);
-                break;
-            case 1:
-                PrintCoeffs(lpf_2a);
-                System::Delay(70);
-                PrintCoeffs(hpf_2a);
-                break;
-            case 2:
-                PrintCoeffs(hpf_3a);
-                break;
-        }
+        // switch (b2_toogle_state)
+        // {
+        //     case 0:
+        //         PrintCoeffs(lpf_1a);
+        //         break;
+        //     case 1:
+        //         PrintCoeffs(lpf_2a);
+        //         System::Delay(70);
+        //         PrintCoeffs(hpf_2a);
+        //         break;
+        //     case 2:
+        //         PrintCoeffs(hpf_3a);
+        //         break;
+        // }
     }
 }
 void UpdateLeds()
@@ -378,7 +446,7 @@ void UpdateLeds()
             hw.led2.Set(0, 1, 0);
             break;
         case 3:
-            hw.led2.Set(.7, .7, .7);
+            hw.led2.Set(0, 1, 1);
             break;
         default: break;
     }
