@@ -8,6 +8,7 @@ SRC_DIR = src
 CPP_SOURCES = MultibandCompressor.cpp 
 CPP_SOURCES += \
 $(SRC_DIR)/butterworth.cpp \
+$(SRC_DIR)/crossover.cpp \
 $(SRC_DIR)/compressor.cpp
 
 # Library Locations

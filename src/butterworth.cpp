@@ -10,7 +10,9 @@ void Butterworth::Reset()
 {
     float omega_c   = cutoff_ * two_pi_d_sr_;
     float K = tanf(omega_c/2);
-    float K2 = exp2(K);
+    float K2 = K * K; // NOTE: this was previously `exp2(K)` (2^K), which is not
+                       // K-squared and silently broke every coefficient derived
+                       // from it. See ANALYSIS.md.
 
     if (filter_type_ == butterworth::FilterType::ALLPASS){
         a0_ = 1.0;
@@ -53,7 +55,7 @@ void Butterworth::Init(float sample_rate)
 float Butterworth::Process(float in)
 {
     float xn, yn;
-    float a0 = a0_, a1 = a1_, a2 = a2_;
+    float a1 = a1_, a2 = a2_; // a0_ is always 1.0 and unused in the recurrence below
     float b0 = b0_, b1 = b1_, b2 = b2_;
     float xnm1 = xnm1_, xnm2 = xnm2_, ynm1 = ynm1_, ynm2 = ynm2_;
 

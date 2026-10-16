@@ -1,14 +1,21 @@
-#include "butterworth.h"
+#include "../src/butterworth.h"
 #include <iostream>
 #include <vector>
+#include <string>
+#include <cassert>
 #include <cmath>
 #include "AudioFile.h"
 
 using namespace std;
 using namespace butterworth;
 
+// PC-side sanity-check tool, NOT part of the firmware build (not listed in
+// the Makefile's CPP_SOURCES). Point filePath at a real WAV file before
+// running. Requires a native (non-ARM) C++ compiler -- the ARM toolchain
+// used to build the firmware (arm-none-eabi-g++) cannot run this.
+//
 // Test Compile:
-// g++ -I"C:\Daisy_Projects\DaisySP\Source" -I"C:\Daisy_Projects\DaisySP\Source\Utility" -I"C:/Daisy_Projects/DaisyExamples/libDaisy/src" -o butterworth_test butterworth.cpp butterworth_test.cpp
+// g++ -I"C:\Daisy_Projects\DaisySP\Source" -I"C:\Daisy_Projects\DaisySP\Source\Utility" -I"C:/Daisy_Projects/DaisyExamples/libDaisy/src" -o butterworth_test ../src/butterworth.cpp butterworth_test.cpp
 
 
 int main()
@@ -24,7 +31,7 @@ int main()
         
         //---------------------------------------------------------------
         // 1. Set a file path to an audio file on your machine
-        const std::string filePath = std::string "C:\python_dev\CCRMA-Experiments\chirp8Sec.wav";
+        const std::string filePath = "C:\\python_dev\\CCRMA-Experiments\\chirp8Sec.wav";
         
         //---------------------------------------------------------------
         // 2. Create an AudioFile object and load the audio file
