@@ -4,6 +4,24 @@ Quick-reference runbook for building firmware, getting it onto the Field,
 and operating it. See [ANALYSIS.md](ANALYSIS.md) for the original codebase
 audit and [TESTING.md](TESTING.md) for how the DSP/firmware was verified.
 
+## 0. Pushing to GitHub
+
+The local git repo root is actually `MyProjects/` (one level up), shared
+with unrelated sibling projects (DubDelay, mbtest, etc.). The GitHub repo
+at `github.com/mgronberg0/MultibandCompressor` is scoped to just this
+project, so pushes go through `git subtree`, not a plain `git push`, to
+avoid leaking sibling-project history/files into it.
+
+From `MyProjects/` (not from inside `MultibandCompressor/`):
+```
+git subtree push --prefix=MultibandCompressor multibandcompressor <local-branch>:main
+```
+`multibandcompressor` is the remote name already configured locally for
+that URL. This computes a synthetic history containing only commits that
+touched `MultibandCompressor/` and pushes it as `main` on the remote --
+it does not rewrite anything in the shared `MyProjects` repo, so it's safe
+to run repeatedly as work continues.
+
 ## 1. Toolchain
 
 Everything lives under the Daisy toolchain install:
