@@ -18,3 +18,9 @@ DAISYSP_DIR = ../../DaisySP/
 # Core location, and generic Makefile.
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 include $(SYSTEM_FILES_DIR)/Makefile
+
+# newlib-nano's printf (pulled in by --specs=nano.specs above) has no
+# floating-point format support by default -- %f/%.0f/etc. silently print
+# nothing. UpdateDisplay() relies on float formatting for every number on
+# the OLED, so pull the real implementation back in.
+LDFLAGS += -Wl,-u,_printf_float

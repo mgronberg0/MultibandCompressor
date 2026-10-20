@@ -1,8 +1,6 @@
 #include "butterworth.h"
 #include <math.h>
-#include "daisy_pod.h"
-#include "daisysp.h"
-//#include "dsp.h"
+#include "daisysp.h" // for TWOPI_F only -- this header must stay hardware-independent
 
 using namespace butterworth;
 
